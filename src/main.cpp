@@ -1,71 +1,32 @@
 #include <Arduino.h>
-#include <Stepper.h>
+#include <ESP32Servo.h>  // 使用 ESP32Servo 庫
 
-// 定義步進馬達的步數
-const int stepsPerRevolution = 2048; // 28BYJ-48 的步數
+Servo myServo;  // 宣告舵機物件
 
-// 初始化 Stepper 物件
-Stepper myStepper(stepsPerRevolution, 8, 10, 9, 11);
-int stepsToMove = 0;
-
+// 選擇 GPIO 21 作為舵機的信號腳位
+#define SERVO_PIN 21
 
 int heart_rate = 60; //RPM
 
-
-
 void setup() {
-  // 初始化串列通訊，設定波特率為9600
-  Serial.begin(9600);
-  // 設定馬達速度（每分鐘轉速）
-  myStepper.setSpeed(1); // 5 RPM
+  Serial.begin(115200);
+  
+  // 初始化舵機，連接到 GPIO 21
+  myServo.attach(SERVO_PIN);
+
 }
-
-
-
-
-void rotateMotor() {
-
-  unsigned long currentMillis = millis();
-
-
-
-// 心跳
-  if (currentMillis % (60000/heart_rate) >= 0 && currentMillis % (60000/heart_rate) <= 200) {
-    // 讓馬達正向旋轉一定的步數
-    stepsToMove += 1; // 計算要移動的步數
-    
-  }
-
-  if (currentMillis % (60000/heart_rate) >= (60000/heart_rate - 200) ) {
-    // 讓馬達正向旋轉一定的步數
-    stepsToMove -= 1; // 計算要移動的步數
-    
-  }
-
-
-
-
-// 呼吸
-
-  //   if (currentMillis % 6000 >= 0 && currentMillis % 6000 <= 1000) {
-  //   // 讓馬達正向旋轉一定的步數
-  //   stepsToMove += 1; // 計算要移動的步數
-    
-  // }
-
-  // if (currentMillis % 6000 >= 2500 && currentMillis % 6000 <= 3500) {
-  //   // 讓馬達正向旋轉一定的步數
-  //   stepsToMove += -1; // 計算要移動的步數
-    
-  // }
-
-  myStepper.step(stepsToMove);
-  stepsToMove = 0;
-}
-
 
 void loop() {
-  rotateMotor();
-  Serial.print("Current execution time: ");
-  Serial.println(millis());
+  // 範例：讓舵機從 0 度移動到 180 度
+  for (int pos = 0; pos <= 3; pos += 1) {
+    myServo.write(pos);  // 設定舵機位置
+    delay(15);           // 確保舵機有足夠時間移動
+  }
+
+  // 再讓舵機從 180 度移動回 0 度
+  for (int pos = 3; pos >= 0; pos -= 1) {
+    myServo.write(pos);
+    delay(15);
+  }
+  delay(60000/heart_rate-15*6);
 }
