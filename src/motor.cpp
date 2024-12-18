@@ -3,82 +3,76 @@
 #include <Arduino.h>
 
 Motor::Motor() {
-    heart_rate = 30;
-    servo_start_angle = 45;
+    heart_rate = 60;  // 固定心率為 60 RPM
+    servo_start_angle = 150;
     servo_rotate_angle = 5;
-    servo_rotate_time = 0.015;
-    heart_rate_min = heart_rate;
-    seconds_elapsed = 0;
+    servo_rotate_time = 0.025;
     
     // 初始化非阻塞控制相關變數
     currentPosition = servo_start_angle;
     servoState = WAITING;
     servoMoveStartTime = 0;
     cycleStartTime = 0;
+    
+    // 初始化快取變數
+    lastHeartRate = -1;
+    cachedWaitTime = 0;
+    cachedMoveTime = 0;
 }
 
 void Motor::begin(int pin) {
     myServo.attach(pin);
-    previousMillis = millis();
     servoMoveStartTime = millis();
     cycleStartTime = millis();
+    lastUpdateTime = millis();
+}
+
+void Motor::updateTimings() {
+    if (lastHeartRate != heart_rate) {
+        float totalCycleTime = (60.0/heart_rate) * 1000;
+        cachedMoveTime = servo_rotate_time * 2 * servo_rotate_angle * 1000;
+        cachedWaitTime = totalCycleTime - cachedMoveTime;
+        lastHeartRate = heart_rate;
+    }
 }
 
 void Motor::update() {
     unsigned long currentMillis = millis();
-
-    // 心率更新邏輯
-    if (currentMillis - previousMillis >= interval * 1000) {
-        previousMillis = currentMillis;
-        seconds_elapsed += interval;
-        
-        if (seconds_elapsed <= seconds_elapsed_max - interval) {
-            heart_rate += heart_rate_increase;
-            Serial.print("心率更新為: ");
-            Serial.println(heart_rate);
-        }
+    
+    // 降低更新頻率
+    if (currentMillis - lastUpdateTime < UPDATE_INTERVAL) {
+        return;
     }
+    lastUpdateTime = currentMillis;
 
-    if (seconds_elapsed >= seconds_elapsed_max) {
-        heart_rate = heart_rate_min;
-        seconds_elapsed = 0;
-        Serial.println("重新開始循環");
-    }
+    updateTimings();
 
     // 伺服馬達非阻塞控制邏輯
     switch (servoState) {
         case MOVING_UP:
-            if (currentMillis - servoMoveStartTime >= servo_rotate_time * 1000) {
-                servoMoveStartTime = currentMillis;
-                currentPosition++;
-                myServo.write(currentPosition);
-                
-                if (currentPosition >= servo_start_angle + servo_rotate_angle) {
-                    servoState = MOVING_DOWN;
-                }
-            }
-            break;
-
         case MOVING_DOWN:
             if (currentMillis - servoMoveStartTime >= servo_rotate_time * 1000) {
                 servoMoveStartTime = currentMillis;
-                currentPosition--;
-                myServo.write(currentPosition);
                 
-                if (currentPosition <= servo_start_angle) {
-                    servoState = WAITING;
-                    cycleStartTime = currentMillis;
+                if (servoState == MOVING_UP) {
+                    currentPosition++;
+                    if (currentPosition >= servo_start_angle + servo_rotate_angle) {
+                        servoState = MOVING_DOWN;
+                    }
+                } else {
+                    currentPosition--;
+                    if (currentPosition <= servo_start_angle) {
+                        servoState = WAITING;
+                        cycleStartTime = currentMillis;
+                    }
                 }
+                
+                myServo.write(currentPosition);
             }
             break;
 
         case WAITING:
-            // 計算等待時間：總週期減去運動時間
-            float totalCycleTime = (60.0/heart_rate) * 1000;
-            float moveTime = servo_rotate_time * 2 * servo_rotate_angle * 1000;
-            float waitTime = totalCycleTime - moveTime;
-            
-            if (currentMillis - cycleStartTime >= waitTime) {
+            if (currentMillis - cycleStartTime >= cachedWaitTime) {
                 servoState = MOVING_UP;
                 currentPosition = servo_start_angle;
                 servoMoveStartTime = currentMillis;
@@ -88,6 +82,12 @@ void Motor::update() {
 }
 
 void Motor::setHeartRate(int rate) {
-    heart_rate = rate;
-    heart_rate_min = rate;  // 更新最小心率
+    if (rate != heart_rate) {
+        heart_rate = rate;
+        updateTimings();
+    }
+}
+
+float Motor::getHeartRate() const {
+    return heart_rate;
 }
